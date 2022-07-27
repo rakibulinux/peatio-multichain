@@ -84,6 +84,10 @@ func (b *Blockchain) GetBlockByHash(ctx context.Context, hash string) (*block.Bl
 			return nil, err
 		}
 
+		for _, tx := range txs {
+			tx.BlockNumber = result.Number().Int64()
+		}
+
 		transactions = append(transactions, txs...)
 	}
 
