@@ -220,6 +220,9 @@ func (b *Blockchain) buildERC20Transactions(tx *types.Transaction, receipt *type
 		if len(l.Topics) == 0 {
 			continue
 		}
+		if len(l.Topics) < 3 {
+			continue
+		}
 		if l.Topics[0].Hex() != tokenEventIdentifier {
 			continue
 		}

@@ -45,7 +45,7 @@ func TestBlockchain_GetLatestBlockNumber(t *testing.T) {
 func TestBlockchain_GetBlockByNumber(t *testing.T) {
 	bl := newBlockchain()
 
-	block, err := bl.GetBlockByNumber(context.Background(), 21061227)
+	block, err := bl.GetBlockByNumber(context.Background(), 21962375)
 	if err != nil {
 		t.Error(err)
 	}
