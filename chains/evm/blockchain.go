@@ -217,7 +217,10 @@ func (b *Blockchain) buildERC20Transactions(tx *types.Transaction, receipt *type
 		if len(l.BlockHash.Bytes()) == 0 && l.BlockNumber == 0 {
 			continue
 		}
-		if len(l.Topics) == 0 || l.Topics[0].Hex() != tokenEventIdentifier {
+		if len(l.Topics) == 0 {
+			continue
+		}
+		if l.Topics[0].Hex() != tokenEventIdentifier {
 			continue
 		}
 
