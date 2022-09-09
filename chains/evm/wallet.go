@@ -15,11 +15,20 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/shopspring/decimal"
 	"github.com/volatiletech/null/v9"
+	"github.com/zsmartex/mergo"
 	"github.com/zsmartex/multichain/pkg/currency"
 	"github.com/zsmartex/multichain/pkg/transaction"
 	"github.com/zsmartex/multichain/pkg/utils"
 	"github.com/zsmartex/multichain/pkg/wallet"
 )
+
+type Options struct {
+	Erc20ContractAddress string              `json:"erc20_contract_address"`
+	GasPrice             uint64              `json:"gas_price"`
+	GasLimit             uint64              `json:"gas_limit"`
+	GasRate              wallet.GasPriceRate `json:"gas_rate"`
+	SubtractFee          bool                `json:"subtract_fee"`
+}
 
 var defaultEvmFee = map[string]interface{}{
 	"gas_limit": 21_000,
@@ -114,20 +123,16 @@ func (w *Wallet) PrepareDepositCollection(ctx context.Context, tx *transaction.T
 
 	options := w.mergeOptions(defaultEvmFee, depositCurrency.Options)
 
-	var gasPrice uint64
-	var err error
-	if options["gas_price"] != nil {
-		gasPrice = uint64(options["gas_price"].(int))
-	} else {
-		gasPrice, err = w.calculateGasPrice(ctx, options)
+	if options.GasPrice == 0 {
+		gasPrice, err := w.calculateGasPrice(ctx, options)
 		if err != nil {
 			return nil, err
 		}
+
+		options.GasPrice = gasPrice
 	}
 
-	gasLimit := uint64(options["gas_limit"].(int))
-
-	fees := decimal.NewFromBigInt(big.NewInt(int64(gasLimit*gasPrice)), -w.currency.Subunits)
+	fees := decimal.NewFromBigInt(big.NewInt(int64(options.GasLimit*options.GasPrice)), -w.currency.Subunits)
 	amount := fees.Mul(decimal.NewFromInt(int64(len(depositSpreads))))
 
 	tx.Amount = amount
@@ -143,30 +148,23 @@ func (w *Wallet) CreateTransaction(ctx context.Context, tx *transaction.Transact
 	}
 }
 
-func (w *Wallet) createEvmTransaction(ctx context.Context, tx *transaction.Transaction, options map[string]interface{}) (t *transaction.Transaction, err error) {
-	options = w.mergeOptions(options, defaultEvmFee, w.currency.Options)
+func (w *Wallet) createEvmTransaction(ctx context.Context, tx *transaction.Transaction, opt map[string]interface{}) (t *transaction.Transaction, err error) {
+	options := w.mergeOptions(opt, defaultEvmFee, w.currency.Options, tx.Options)
 
-	if tx.Options["gas_price"] != nil {
-		options["gas_price"] = tx.Options["gas_price"]
-	} else {
+	if options.GasPrice == 0 {
 		gasPrice, err := w.calculateGasPrice(ctx, options)
 		if err != nil {
 			return nil, err
 		}
 
-		options["gas_price"] = int(gasPrice)
+		options.GasPrice = gasPrice
 	}
 
-	gasLimit := uint64(options["gas_limit"].(int))
-	gasPrice := uint64(options["gas_price"].(int))
-
 	amount := w.ConvertToBaseUnit(tx.Amount)
-	fee := decimal.NewFromInt(int64(gasLimit * gasPrice))
+	fee := decimal.NewFromInt(int64(options.GasLimit * options.GasPrice))
 
-	if options["subtract_fee"] != nil {
-		if options["subtract_fee"].(bool) {
-			amount = amount.Sub(fee)
-		}
+	if options.SubtractFee {
+		amount = amount.Sub(fee)
 	}
 
 	var txid string
@@ -174,8 +172,8 @@ func (w *Wallet) createEvmTransaction(ctx context.Context, tx *transaction.Trans
 		"from":     w.normalizeAddress(w.wallet.Address),
 		"to":       w.normalizeAddress(tx.ToAddress),
 		"value":    hexutil.EncodeBig(amount.BigInt()),
-		"gas":      hexutil.EncodeUint64(gasLimit),
-		"gasPrice": hexutil.EncodeUint64(gasPrice),
+		"gas":      hexutil.EncodeUint64(options.GasLimit),
+		"gasPrice": hexutil.EncodeUint64(options.GasPrice),
 	}, w.wallet.Secret)
 	if err != nil {
 		return nil, err
@@ -188,18 +186,16 @@ func (w *Wallet) createEvmTransaction(ctx context.Context, tx *transaction.Trans
 	return tx, nil
 }
 
-func (w *Wallet) createErc20Transaction(ctx context.Context, tx *transaction.Transaction, options map[string]interface{}) (*transaction.Transaction, error) {
-	options = w.mergeOptions(options, defaultErc20Fee, w.currency.Options)
+func (w *Wallet) createErc20Transaction(ctx context.Context, tx *transaction.Transaction, opt map[string]interface{}) (*transaction.Transaction, error) {
+	options := w.mergeOptions(opt, defaultErc20Fee, w.currency.Options, tx.Options)
 
-	if tx.Options["gas_price"] != nil {
-		options["gas_price"] = tx.Options["gas_price"]
-	} else {
+	if options.GasPrice == 0 {
 		gasPrice, err := w.calculateGasPrice(ctx, options)
 		if err != nil {
 			return nil, err
 		}
 
-		options["gas_price"] = int(gasPrice)
+		options.GasPrice = gasPrice
 	}
 
 	amount := w.ConvertToBaseUnit(tx.Amount)
@@ -214,18 +210,15 @@ func (w *Wallet) createErc20Transaction(ctx context.Context, tx *transaction.Tra
 		return nil, err
 	}
 
-	gasLimit := uint64(options["gas_limit"].(int))
-	gasPrice := uint64(options["gas_price"].(int))
-
-	fee := decimal.NewFromInt(int64(gasLimit * gasPrice))
+	fee := decimal.NewFromInt(int64(options.GasLimit * options.GasPrice))
 
 	var txid string
 	err = w.jsonRPC(ctx, &txid, "personal_sendTransaction", map[string]string{
 		"from":     w.normalizeAddress(w.wallet.Address),
 		"to":       w.ContractAddress(), // to contract address
 		"data":     hexutil.Encode(data),
-		"gas":      hexutil.EncodeUint64(gasLimit),
-		"gasPrice": hexutil.EncodeUint64(gasPrice),
+		"gas":      hexutil.EncodeUint64(options.GasLimit),
+		"gasPrice": hexutil.EncodeUint64(options.GasPrice),
 	}, w.wallet.Secret)
 	if err != nil {
 		return nil, err
@@ -254,14 +247,14 @@ func (w *Wallet) ContractAddress() string {
 	}
 }
 
-func (w *Wallet) calculateGasPrice(ctx context.Context, options map[string]interface{}) (uint64, error) {
+func (w *Wallet) calculateGasPrice(ctx context.Context, options Options) (uint64, error) {
 	var result string
 	if err := w.jsonRPC(ctx, &result, "eth_gasPrice"); err != nil {
 		return 0, err
 	}
 
 	var rate float64
-	switch options["gas_rate"] {
+	switch options.GasRate {
 	case wallet.GasPriceRateFast:
 		rate = 1.1
 	default:
@@ -328,7 +321,7 @@ func (w *Wallet) hexToDecimal(hex string) (decimal.Decimal, error) {
 	return decimal.NewFromBigInt(b, -w.currency.Subunits), nil
 }
 
-func (w *Wallet) mergeOptions(first map[string]interface{}, steps ...map[string]interface{}) map[string]interface{} {
+func (w *Wallet) mergeOptions(first map[string]interface{}, steps ...map[string]interface{}) Options {
 	if first == nil {
 		first = make(map[string]interface{})
 	}
@@ -336,12 +329,17 @@ func (w *Wallet) mergeOptions(first map[string]interface{}, steps ...map[string]
 	opts := first
 
 	for _, step := range steps {
-		for key, value := range step {
-			opts[key] = value
-		}
+		mergo.Merge(&opts, step, mergo.WithOverride)
 	}
 
-	return opts
+	bytes, _ := json.Marshal(opts)
+
+	var options Options
+	if err := json.Unmarshal(bytes, &options); err != nil {
+		return options
+	}
+
+	return options
 }
 
 func (w *Wallet) ConvertToBaseUnit(amount decimal.Decimal) decimal.Decimal {
