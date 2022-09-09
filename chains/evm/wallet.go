@@ -117,11 +117,11 @@ func (w *Wallet) CreateAddress(ctx context.Context) (address, secret string, err
 
 // PrepareDepositCollection this func don't execute create transaction just return transaction was built
 func (w *Wallet) PrepareDepositCollection(ctx context.Context, tx *transaction.Transaction, depositSpreads []*transaction.Transaction, depositCurrency *currency.Currency) (*transaction.Transaction, error) {
-	if depositCurrency.Options["erc20_contract_address"] == nil {
+	options := w.mergeOptions(defaultErc20Fee, depositCurrency.Options)
+
+	if len(options.Erc20ContractAddress) == 0 {
 		return nil, nil
 	}
-
-	options := w.mergeOptions(defaultEvmFee, depositCurrency.Options)
 
 	if options.GasPrice == 0 {
 		gasPrice, err := w.calculateGasPrice(ctx, options)
