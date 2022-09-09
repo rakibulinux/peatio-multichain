@@ -7,7 +7,9 @@ import (
 	"math/rand"
 	"strings"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/shopspring/decimal"
+	"github.com/volatiletech/null/v9"
 	"github.com/zsmartex/multichain/pkg/currency"
 	"github.com/zsmartex/multichain/pkg/transaction"
 	"github.com/zsmartex/multichain/pkg/utils"

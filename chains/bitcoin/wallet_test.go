@@ -74,7 +74,7 @@ func TestWallet_CreateTransaction(t *testing.T) {
 		ToAddress: "bcrt1qqqd8hdc684cqpm5ydfd535eygxlmh54wysmzry",
 		Amount:    decimal.NewFromFloat(0.1),
 		Currency:  "BTC",
-	})
+	}, nil)
 	if err != nil {
 		t.Error(err)
 	}
