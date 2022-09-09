@@ -15,7 +15,6 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/shopspring/decimal"
 	"github.com/volatiletech/null/v9"
-
 	"github.com/zsmartex/multichain/pkg/currency"
 	"github.com/zsmartex/multichain/pkg/transaction"
 	"github.com/zsmartex/multichain/pkg/utils"
@@ -115,9 +114,15 @@ func (w *Wallet) PrepareDepositCollection(ctx context.Context, tx *transaction.T
 
 	options := w.mergeOptions(defaultEvmFee, depositCurrency.Options)
 
-	gasPrice, err := w.calculateGasPrice(ctx, options)
-	if err != nil {
-		return nil, err
+	var gasPrice uint64
+	var err error
+	if options["gas_price"] != nil {
+		gasPrice = uint64(options["gas_price"].(int))
+	} else {
+		gasPrice, err = w.calculateGasPrice(ctx, options)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	gasLimit := uint64(options["gas_limit"].(int))

@@ -50,7 +50,7 @@ func TestBlockchain_GetBlockByNumber(t *testing.T) {
 		t.Error(err)
 	}
 
-	t.Log(block)
+	t.Log(block.Transactions[0])
 }
 
 func TestBlockchain_GetBlockByHash(t *testing.T) {

@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/huandu/xstrings"
 	"github.com/shopspring/decimal"
 	"github.com/volatiletech/null/v9"
-
 	"github.com/zsmartex/multichain/chains/tron/concerns"
 	"github.com/zsmartex/multichain/pkg/block"
 	"github.com/zsmartex/multichain/pkg/blockchain"
@@ -277,7 +277,7 @@ func (b *Blockchain) buildTrc20Transaction(txnReceipt *TransactionInfo) ([]*tran
 		var c *currency.Currency
 		for _, contract := range b.contracts {
 			contractAddress := concerns.HexToAddress(fmt.Sprintf("41%s", log.Address))
-			if contract.Options["trc20_contract_address"] == contractAddress.String() {
+			if strings.EqualFold(contract.Options["trc20_contract_address"].(string), contractAddress.String()) {
 				c = contract
 				break
 			}
@@ -322,7 +322,7 @@ func (b *Blockchain) buildInvalidTrc20Txn(txnReceipt *TransactionInfo) ([]*trans
 	for _, contract := range b.contracts {
 		contractAddress := concerns.HexToAddress(txnReceipt.ContractAddress)
 
-		if contract.Options["trc20_contract_address"] == contractAddress.String() {
+		if strings.EqualFold(contract.Options["trc20_contract_address"].(string), contractAddress.String()) {
 			c = contract
 			break
 		}

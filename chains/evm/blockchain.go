@@ -14,7 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/shopspring/decimal"
 	"github.com/volatiletech/null/v9"
-
 	"github.com/zsmartex/multichain/pkg/block"
 	"github.com/zsmartex/multichain/pkg/blockchain"
 	"github.com/zsmartex/multichain/pkg/currency"

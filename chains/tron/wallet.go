@@ -14,7 +14,6 @@ import (
 	"github.com/huandu/xstrings"
 	"github.com/shopspring/decimal"
 	"github.com/volatiletech/null/v9"
-
 	"github.com/zsmartex/multichain/chains/tron/concerns"
 	"github.com/zsmartex/multichain/pkg/currency"
 	"github.com/zsmartex/multichain/pkg/transaction"
