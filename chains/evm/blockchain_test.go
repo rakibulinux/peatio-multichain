@@ -12,7 +12,7 @@ func newBlockchain() blockchain.Blockchain {
 	bl := NewBlockchain()
 
 	bl.Configure(&blockchain.Setting{
-		URI: "http://65.108.75.172:8575",
+		URI: "http://135.181.59.155:8575",
 		Currencies: []*currency.Currency{
 			{
 				ID:       "BSC",

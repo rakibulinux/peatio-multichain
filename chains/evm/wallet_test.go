@@ -16,9 +16,9 @@ func newWallet() wallet.Wallet {
 
 	w.Configure(&wallet.Setting{
 		Wallet: &wallet.SettingWallet{
-			URI:     "http://65.108.75.172:8575",
-			Address: "0x249aeb18f3a323c12334a595cb6220912c4b9087",
-			Secret:  "AHyDK2saIAQlDmCiPoteP3uGBUgBzLG0",
+			URI:     "http://demo.zsmartex.com:8575",
+			Address: "0xD2E03d98cd8af2D84522Cf11D471AaA4ca60D8CA",
+			Secret:  "0x5ad49a2045e12bdea77b36debea34721aa6941084ef1b75877e56f1bd71e0515",
 		},
 	})
 
@@ -93,12 +93,13 @@ func TestWallet_CreateEVMTransaction(t *testing.T) {
 	})
 
 	tx, err := w.CreateTransaction(context.Background(), &transaction.Transaction{
-		ToAddress: "0xF37111De2f6AE2f64Be1e59472b5C50801540C8c",
+		ToAddress: "0xbecFbfd1BaDdB4FE857CCB428555b9EA47fFCC40",
 		Amount:    decimal.NewFromFloat(0.001),
 		Currency:  "ETH",
 	}, nil)
 	if err != nil {
 		t.Error(err)
+		return
 	}
 
 	t.Log(tx)
