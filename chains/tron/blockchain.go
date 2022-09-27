@@ -225,6 +225,10 @@ func (b *Blockchain) buildTransaction(ctx context.Context, tx *Transaction) ([]*
 		return nil, errors.New("transaction invalid trc20 txn")
 	}
 
+	if len(txn.ContractAddress) == 0 {
+		return []*transaction.Transaction{}, nil
+	}
+
 	return b.buildTrc20Transaction(txn)
 }
 

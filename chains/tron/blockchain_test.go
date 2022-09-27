@@ -11,7 +11,7 @@ import (
 func newBlockchain() blockchain.Blockchain {
 	bl := NewBlockchain()
 	bl.Configure(&blockchain.Setting{
-		URI: "https://api.shasta.trongrid.io",
+		URI: "http://demo.zsmartex.com:8090",
 		Currencies: []*currency.Currency{
 			{
 				ID:       "TRX",
@@ -21,7 +21,7 @@ func newBlockchain() blockchain.Blockchain {
 				ID:       "USDT",
 				Subunits: 6,
 				Options: map[string]interface{}{
-					"trc20_contract_address": "TB5NSkyzxkzi3eHW87NwFE6TmtTmnZw61y",
+					"trc20_contract_address": "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj",
 				},
 			},
 		},
@@ -44,7 +44,7 @@ func TestBlockchain_GetLatestBlockNumber(t *testing.T) {
 func TestBlockchain_GetBlockByNumber(t *testing.T) {
 	bl := newBlockchain()
 
-	block, err := bl.GetBlockByNumber(context.Background(), 25652403)
+	block, err := bl.GetBlockByNumber(context.Background(), 30196474)
 	if err != nil {
 		t.Error(err)
 	}
