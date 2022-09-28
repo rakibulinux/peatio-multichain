@@ -17,8 +17,8 @@ func newWallet() wallet.Wallet {
 	w.Configure(&wallet.Setting{
 		Wallet: &wallet.SettingWallet{
 			URI:     "http://demo.zsmartex.com:8090",
-			Address: "TKjUc4RaW9q9CXy6PbBmkTTKSBkmGHK5Gm",
-			Secret:  "6e85b5700512636db4680e37286e95fee69ae05663c7899edd490ed7de98daf6",
+			Address: "TVuwqpZ3a8gd2BFG6aiYBs1RaA6KmdHdcr",
+			Secret:  "d70cd214c7ee93646b11a8e9db7ad10d8f48b755deec3955398214a4657bae4b",
 		},
 	})
 

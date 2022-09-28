@@ -147,7 +147,7 @@ func (w *Wallet) createTrxTransaction(ctx context.Context, tx *transaction.Trans
 	if err := w.jsonRPC(ctx, &resp, "wallet/easytransferbyprivate", map[string]interface{}{
 		"privateKey": w.wallet.Secret,
 		"toAddress":  toAddress.Hex(),
-		"amount":     amount,
+		"amount":     amount.BigInt(),
 	}); err != nil {
 		return nil, err
 	}
