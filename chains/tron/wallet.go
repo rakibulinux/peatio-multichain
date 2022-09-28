@@ -288,13 +288,13 @@ func (w *Wallet) loadTrxBalance(ctx context.Context) (decimal.Decimal, error) {
 	}
 
 	var result *Result
-	if err := w.jsonRPC(ctx, &result, "wallet/getbalance", map[string]interface{}{
+	if err := w.jsonRPC(ctx, &result, "wallet/getaccount", map[string]interface{}{
 		"address": addressDecoded.Hex(),
 	}); err != nil {
 		return decimal.Zero, err
 	}
 
-	return result.Balance, nil
+	return w.ConvertFromBaseUnit(result.Balance), nil
 }
 
 func (w *Wallet) mergeOptions(first map[string]interface{}, steps ...map[string]interface{}) map[string]interface{} {

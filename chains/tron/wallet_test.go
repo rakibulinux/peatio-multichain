@@ -16,13 +16,52 @@ func newWallet() wallet.Wallet {
 
 	w.Configure(&wallet.Setting{
 		Wallet: &wallet.SettingWallet{
-			URI:     "https://api.nileex.io",
+			URI:     "http://demo.zsmartex.com:8090",
 			Address: "TKjUc4RaW9q9CXy6PbBmkTTKSBkmGHK5Gm",
 			Secret:  "6e85b5700512636db4680e37286e95fee69ae05663c7899edd490ed7de98daf6",
 		},
 	})
 
 	return w
+}
+
+func TestWallet_LoadTrxBalance(t *testing.T) {
+	w := newWallet()
+
+	w.Configure(&wallet.Setting{
+		Currency: &currency.Currency{
+			ID:       "TRX",
+			Subunits: 6,
+		},
+	})
+
+	balance, err := w.LoadBalance(context.Background())
+	if err != nil {
+		t.Error(err)
+	}
+
+	t.Log(balance)
+}
+
+func TestWallet_LoadTrc20Balance(t *testing.T) {
+	w := newWallet()
+
+	w.Configure(&wallet.Setting{
+		Currency: &currency.Currency{
+			ID:       "USDT",
+			Subunits: 6,
+			Options: map[string]interface{}{
+				"trc20_contract_address": "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj",
+			},
+		},
+	})
+
+	balance, err := w.LoadBalance(context.Background())
+	if err != nil {
+		t.Error(err)
+	}
+
+	t.Log(balance)
 }
 
 func TestWallet_CreateAddress(t *testing.T) {
