@@ -73,8 +73,6 @@ func (w *Wallet) jsonRPC(ctx context.Context, resp interface{}, method string, p
 		return err
 	}
 
-	fmt.Println(response.String())
-
 	result := response.Result().(*Result)
 
 	if result.Code == "CONTRACT_VALIDATE_ERROR" {
@@ -82,7 +80,7 @@ func (w *Wallet) jsonRPC(ctx context.Context, resp interface{}, method string, p
 		if err != nil {
 			return fmt.Errorf("jsonRPC error: %s, %s", result.Code, err.Error())
 		}
-		return fmt.Errorf("jsonRPC error: %s, %s", result.Code, decoded)
+		return fmt.Errorf("jsonRPC error: %s, %s", result.Code, string(decoded))
 	}
 
 	if result.Error != nil {
@@ -141,11 +139,9 @@ func (w *Wallet) createTrxTransaction(ctx context.Context, tx *transaction.Trans
 		return nil, err
 	}
 
-	fmt.Println(tx.Amount)
 	amount := w.ConvertToBaseUnit(tx.Amount)
-	fmt.Println(amount)
 	feeLimit := int64(options["fee_limit"].(int))
-	fee := w.ConvertToBaseUnit(decimal.NewFromInt(feeLimit))
+	fee := decimal.NewFromInt(feeLimit)
 
 	if options["subtract_fee"] != nil {
 		if options["subtract_fee"].(bool) {
