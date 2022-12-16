@@ -73,8 +73,6 @@ func (w *Wallet) jsonRPC(ctx context.Context, resp interface{}, method string, p
 		return err
 	}
 
-	fmt.Println(response.String())
-
 	result := response.Result().(*Result)
 
 	if result.Code == "CONTRACT_VALIDATE_ERROR" {
@@ -156,9 +154,6 @@ func (w *Wallet) createTrxTransaction(ctx context.Context, tx *transaction.Trans
 			TxID string `json:"txID"`
 		} `json:"transaction"`
 	}
-
-	fmt.Println(amount)
-	fmt.Println(fee)
 
 	if err := w.jsonRPC(ctx, &resp, "wallet/easytransferbyprivate", map[string]interface{}{
 		"privateKey": w.wallet.Secret,
