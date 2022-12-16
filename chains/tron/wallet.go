@@ -2,6 +2,7 @@ package tron
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,7 +53,9 @@ func (w *Wallet) Configure(settings *wallet.Setting) {
 
 func (w *Wallet) jsonRPC(ctx context.Context, resp interface{}, method string, params interface{}) error {
 	type Result struct {
-		Error *json.RawMessage `json:"Error,omitempty"`
+		Code    string           `json:"code,omitempty"`
+		Message string           `json:"message,omitempty"`
+		Error   *json.RawMessage `json:"Error,omitempty"`
 	}
 
 	response, err := w.client.
@@ -73,6 +76,14 @@ func (w *Wallet) jsonRPC(ctx context.Context, resp interface{}, method string, p
 	fmt.Println(response.String())
 
 	result := response.Result().(*Result)
+
+	if result.Code == "CONTRACT_VALIDATE_ERROR" {
+		decoded, err := hex.DecodeString(result.Message)
+		if err != nil {
+			return fmt.Errorf("jsonRPC error: %s, %s", result.Code, err.Error())
+		}
+		return fmt.Errorf("jsonRPC error: %s, %s", result.Code, decoded)
+	}
 
 	if result.Error != nil {
 		return errors.New("jsonRPC error: " + string(*result.Error))
@@ -130,7 +141,9 @@ func (w *Wallet) createTrxTransaction(ctx context.Context, tx *transaction.Trans
 		return nil, err
 	}
 
+	fmt.Println(tx.Amount)
 	amount := w.ConvertToBaseUnit(tx.Amount)
+	fmt.Println(amount)
 	feeLimit := int64(options["fee_limit"].(int))
 	fee := w.ConvertToBaseUnit(decimal.NewFromInt(feeLimit))
 
