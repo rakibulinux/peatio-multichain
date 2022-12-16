@@ -66,7 +66,7 @@ func TestBlockchain_GetBlockByHash(t *testing.T) {
 func TestBlockchain_GetTrxTransaction(t *testing.T) {
 	bl := newBlockchain()
 
-	tx, err := bl.GetTransaction(context.Background(), "aefdf111f53d74a3ec6bcb0b601a11feb80c74623ffa508cc13a4d42228a7b74")
+	tx, err := bl.GetTransaction(context.Background(), "2dc31df33223d3b19febc456d82e68de53fb2ea0ca767426b4ae62dbf2ceb9e8")
 	if err != nil {
 		t.Error(err)
 	}

@@ -73,6 +73,8 @@ func (w *Wallet) jsonRPC(ctx context.Context, resp interface{}, method string, p
 		return err
 	}
 
+	fmt.Println(response.String())
+
 	result := response.Result().(*Result)
 
 	if result.Code == "CONTRACT_VALIDATE_ERROR" {
