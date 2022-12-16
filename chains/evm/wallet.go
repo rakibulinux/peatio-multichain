@@ -122,7 +122,7 @@ func (w *Wallet) CreateTransaction(ctx context.Context, tx *transaction.Transact
 }
 
 func (w *Wallet) createEvmTransaction(ctx context.Context, tx *transaction.Transaction, opt map[string]interface{}) (t *transaction.Transaction, err error) {
-	options := w.mergeOptions(opt, defaultEvmFee, w.currency.Options, tx.Options)
+	options := w.mergeOptions(defaultEvmFee, w.currency.Options, tx.Options, opt)
 
 	if options.GasPrice.Cmp(big.NewInt(0)) == 0 {
 		gasPrice, err := w.calculateGasPrice(ctx, options)
@@ -182,7 +182,7 @@ func (w *Wallet) createEvmTransaction(ctx context.Context, tx *transaction.Trans
 }
 
 func (w *Wallet) createErc20Transaction(ctx context.Context, tx *transaction.Transaction, opt map[string]interface{}) (*transaction.Transaction, error) {
-	options := w.mergeOptions(opt, defaultErc20Fee, w.currency.Options, tx.Options)
+	options := w.mergeOptions(defaultEvmFee, w.currency.Options, tx.Options, opt)
 
 	if options.GasPrice.Cmp(big.NewInt(0)) == 0 {
 		gasPrice, err := w.calculateGasPrice(ctx, options)

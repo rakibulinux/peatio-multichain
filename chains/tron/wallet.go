@@ -15,11 +15,18 @@ import (
 	"github.com/huandu/xstrings"
 	"github.com/shopspring/decimal"
 	"github.com/volatiletech/null/v9"
+	"github.com/zsmartex/mergo"
 	"github.com/zsmartex/multichain/chains/tron/concerns"
 	"github.com/zsmartex/multichain/pkg/currency"
 	"github.com/zsmartex/multichain/pkg/transaction"
 	"github.com/zsmartex/multichain/pkg/wallet"
 )
+
+type Options struct {
+	Trc20ContractAddress string          `json:"trc20_contract_address"`
+	FeeLimit             decimal.Decimal `json:"fee_limit"` // in SUN
+	SubtractFee          bool            `json:"subtract_fee"`
+}
 
 var defaultTrxFee = map[string]interface{}{
 	"fee_limit": 1_000_000,
@@ -109,13 +116,12 @@ func (w *Wallet) CreateAddress(ctx context.Context) (address, secret string, err
 }
 
 func (w *Wallet) PrepareDepositCollection(ctx context.Context, tx *transaction.Transaction, depositSpreads []*transaction.Transaction, depositCurrency *currency.Currency) (*transaction.Transaction, error) {
-	if depositCurrency.Options["trc20_contract_address"] == nil {
+	options := w.mergeOptions(defaultTrc20Fee, depositCurrency.Options)
+	if len(options.Trc20ContractAddress) == 0 {
 		return nil, nil
 	}
 
-	options := w.mergeOptions(defaultTrxFee, depositCurrency.Options)
-
-	fees := decimal.NewFromBigInt(big.NewInt(int64(options["fee_limit"].(int))), -w.currency.Subunits)
+	fees := w.ConvertFromBaseUnit(options.FeeLimit)
 	amount := fees.Mul(decimal.NewFromInt(int64(len(depositSpreads))))
 
 	tx.Amount = amount
@@ -131,8 +137,8 @@ func (w *Wallet) CreateTransaction(ctx context.Context, tx *transaction.Transact
 	}
 }
 
-func (w *Wallet) createTrxTransaction(ctx context.Context, tx *transaction.Transaction, options map[string]interface{}) (*transaction.Transaction, error) {
-	options = w.mergeOptions(options, defaultTrxFee, w.currency.Options)
+func (w *Wallet) createTrxTransaction(ctx context.Context, tx *transaction.Transaction, opt map[string]interface{}) (*transaction.Transaction, error) {
+	options := w.mergeOptions(defaultTrxFee, w.currency.Options, tx.Options, opt)
 
 	toAddress, err := concerns.Base58ToAddress(tx.ToAddress)
 	if err != nil {
@@ -140,13 +146,10 @@ func (w *Wallet) createTrxTransaction(ctx context.Context, tx *transaction.Trans
 	}
 
 	amount := w.ConvertToBaseUnit(tx.Amount)
-	feeLimit := int64(options["fee_limit"].(int))
-	fee := decimal.NewFromInt(feeLimit)
+	fee := options.FeeLimit
 
-	if options["subtract_fee"] != nil {
-		if options["subtract_fee"].(bool) {
-			amount = amount.Sub(fee)
-		}
+	if options.SubtractFee {
+		amount = amount.Sub(fee)
 	}
 
 	var resp *struct {
@@ -170,16 +173,13 @@ func (w *Wallet) createTrxTransaction(ctx context.Context, tx *transaction.Trans
 	return tx, nil
 }
 
-func (w *Wallet) createTrc20Transaction(ctx context.Context, tx *transaction.Transaction, options map[string]interface{}) (*transaction.Transaction, error) {
-	options = w.mergeOptions(options, defaultTrc20Fee, w.currency.Options)
+func (w *Wallet) createTrc20Transaction(ctx context.Context, tx *transaction.Transaction, opt map[string]interface{}) (*transaction.Transaction, error) {
+	options := w.mergeOptions(defaultTrc20Fee, w.currency.Options, tx.Options, opt)
 
 	signedTxn, err := w.signTransaction(ctx, tx, options)
 	if err != nil {
 		return nil, err
 	}
-
-	feeLimit := int64(options["fee_limit"].(int))
-	fee := w.ConvertToBaseUnit(decimal.NewFromInt(feeLimit))
 
 	resp := new(struct {
 		Result bool `json:"result"`
@@ -188,14 +188,14 @@ func (w *Wallet) createTrc20Transaction(ctx context.Context, tx *transaction.Tra
 		return nil, fmt.Errorf("failed to create trc20 transaction from %s to %s", w.wallet.Address, tx.ToAddress)
 	}
 
-	tx.Fee = decimal.NewNullDecimal(w.ConvertFromBaseUnit(fee))
+	tx.Fee = decimal.NewNullDecimal(w.ConvertFromBaseUnit(options.FeeLimit))
 	tx.Status = transaction.StatusPending
 	tx.TxHash = null.StringFrom(signedTxn["txID"].(string))
 
 	return tx, nil
 }
 
-func (w *Wallet) signTransaction(ctx context.Context, tx *transaction.Transaction, options map[string]interface{}) (map[string]interface{}, error) {
+func (w *Wallet) signTransaction(ctx context.Context, tx *transaction.Transaction, options Options) (map[string]interface{}, error) {
 	txn, err := w.triggerSmartContract(ctx, tx, options)
 	if err != nil {
 		return nil, err
@@ -212,8 +212,8 @@ func (w *Wallet) signTransaction(ctx context.Context, tx *transaction.Transactio
 	return resp, nil
 }
 
-func (w *Wallet) triggerSmartContract(ctx context.Context, tx *transaction.Transaction, options map[string]interface{}) (json.RawMessage, error) {
-	contractAddress, err := concerns.Base58ToAddress(w.currency.Options["trc20_contract_address"].(string))
+func (w *Wallet) triggerSmartContract(ctx context.Context, tx *transaction.Transaction, options Options) (json.RawMessage, error) {
+	contractAddress, err := concerns.Base58ToAddress(options.Trc20ContractAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +241,7 @@ func (w *Wallet) triggerSmartContract(ctx context.Context, tx *transaction.Trans
 		"contract_address":  contractAddress.Hex(),
 		"function_selector": "transfer(address,uint256)",
 		"parameter":         parameter,
-		"fee_limit":         options["fee_limit"],
+		"fee_limit":         options.FeeLimit,
 		"owner_address":     ownerAddress.Hex(),
 	}); err != nil {
 		return nil, err
@@ -308,7 +308,7 @@ func (w *Wallet) loadTrxBalance(ctx context.Context) (decimal.Decimal, error) {
 	return w.ConvertFromBaseUnit(result.Balance), nil
 }
 
-func (w *Wallet) mergeOptions(first map[string]interface{}, steps ...map[string]interface{}) map[string]interface{} {
+func (w *Wallet) mergeOptions(first map[string]interface{}, steps ...map[string]interface{}) Options {
 	if first == nil {
 		first = make(map[string]interface{})
 	}
@@ -316,12 +316,17 @@ func (w *Wallet) mergeOptions(first map[string]interface{}, steps ...map[string]
 	opts := first
 
 	for _, step := range steps {
-		for k, v := range step {
-			opts[k] = v
-		}
+		mergo.Merge(&opts, step, mergo.WithOverride)
 	}
 
-	return opts
+	bytes, _ := json.Marshal(opts)
+
+	var options Options
+	if err := json.Unmarshal(bytes, &options); err != nil {
+		return options
+	}
+
+	return options
 }
 
 func (w *Wallet) ConvertToBaseUnit(amount decimal.Decimal) decimal.Decimal {
