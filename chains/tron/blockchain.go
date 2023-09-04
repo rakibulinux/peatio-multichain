@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/url"
 	"strings"
 
 	"github.com/go-resty/resty/v2"
@@ -108,6 +109,11 @@ func (b *Blockchain) jsonRPC(ctx context.Context, resp interface{}, method strin
 		Error *json.RawMessage `json:"Error,omitempty"`
 	}
 
+	uri, err := url.Parse(b.setting.URI)
+	if err != nil {
+		return err
+	}
+
 	response, err := b.client.
 		R().
 		SetContext(ctx).
@@ -117,7 +123,7 @@ func (b *Blockchain) jsonRPC(ctx context.Context, resp interface{}, method strin
 			"Content-Type": "application/json",
 		}).
 		SetBody(params).
-		Post(fmt.Sprintf("%s/%s", b.setting.URI, method))
+		Post(uri.JoinPath(method).String())
 
 	if err != nil {
 		return err
