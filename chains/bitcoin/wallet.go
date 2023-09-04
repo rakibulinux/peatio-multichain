@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math/rand"
+	"net/url"
 	"strings"
 
 	"github.com/go-resty/resty/v2"
@@ -46,6 +47,11 @@ func (w *Wallet) jsonRPC(ctx context.Context, resp interface{}, method string, p
 		Error   *json.RawMessage `json:"error"`
 	}
 
+	uri, err := url.Parse(w.wallet.URI)
+	if err != nil {
+		return err
+	}
+
 	response, err := w.client.
 		R().
 		SetContext(ctx).
@@ -59,7 +65,8 @@ func (w *Wallet) jsonRPC(ctx context.Context, resp interface{}, method string, p
 			"id":      rand.Int(),
 			"method":  method,
 			"params":  params,
-		}).Post(w.wallet.URI)
+		}).
+		Post(uri.JoinPath(method).String())
 
 	if err != nil {
 		return err

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"net/url"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -65,6 +66,11 @@ func (w *Wallet) jsonRPC(ctx context.Context, resp interface{}, method string, p
 		Error   *json.RawMessage `json:"Error,omitempty"`
 	}
 
+	uri, err := url.Parse(w.wallet.URI)
+	if err != nil {
+		return err
+	}
+
 	response, err := w.client.
 		R().
 		SetContext(ctx).
@@ -74,7 +80,7 @@ func (w *Wallet) jsonRPC(ctx context.Context, resp interface{}, method string, p
 			"Content-Type": "application/json",
 		}).
 		SetBody(params).
-		Post(fmt.Sprintf("%s/%s", w.wallet.URI, method))
+		Post(uri.JoinPath(method).String())
 
 	if err != nil {
 		return err
@@ -97,6 +103,8 @@ func (w *Wallet) jsonRPC(ctx context.Context, resp interface{}, method string, p
 	if err := json.Unmarshal(response.Body(), resp); err != nil {
 		return err
 	}
+
+	fmt.Println(string(response.Body()))
 
 	return nil
 }
