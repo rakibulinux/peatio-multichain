@@ -2,18 +2,15 @@ package tron
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
-	"math/big"
-	"net/url"
-	"strings"
+	"time"
 
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/go-resty/resty/v2"
-	"github.com/huandu/xstrings"
+	"github.com/fbsobreira/gotron-sdk/pkg/address"
+	"github.com/fbsobreira/gotron-sdk/pkg/client"
+	"github.com/fbsobreira/gotron-sdk/pkg/proto/api"
+	"github.com/fbsobreira/gotron-sdk/pkg/proto/core"
 	"github.com/shopspring/decimal"
 	"github.com/volatiletech/null/v9"
 	"github.com/zsmartex/mergo"
@@ -21,6 +18,18 @@ import (
 	"github.com/zsmartex/multichain/pkg/currency"
 	"github.com/zsmartex/multichain/pkg/transaction"
 	"github.com/zsmartex/multichain/pkg/wallet"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
+)
+
+const (
+	Trc20TransferMethodSignature = "0xa9059cbb"
+	Trc20ApproveMethodSignature  = "0x095ea7b3"
+	Trc20TransferEventSignature  = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+	Trc20NameSignature           = "0x06fdde03"
+	Trc20SymbolSignature         = "0x95d89b41"
+	Trc20DecimalsSignature       = "0x313ce567"
+	Trc20BalanceOf               = "0x70a08231"
 )
 
 type Options struct {
@@ -38,18 +47,25 @@ var defaultTrc20Fee = map[string]interface{}{
 }
 
 type Wallet struct {
-	client   *resty.Client
-	currency *currency.Currency    // selected currency for this wallet
-	wallet   *wallet.SettingWallet // selected wallet for this currency
+	client       *client.GrpcClient
+	walletClient api.WalletClient
+	currency     *currency.Currency    // selected currency for this wallet
+	wallet       *wallet.SettingWallet // selected wallet for this currency
 }
 
 func NewWallet() wallet.Wallet {
-	return &Wallet{
-		client: resty.New(),
-	}
+	return &Wallet{}
 }
 
 func (w *Wallet) Configure(settings *wallet.Setting) {
+	if settings.Wallet != nil {
+		if len(settings.Wallet.URI) > 0 {
+			w.client = client.NewGrpcClientWithTimeout(settings.Wallet.URI, 5*time.Second)
+			w.client.Start(grpc.WithInsecure())
+			w.walletClient = w.client.Client
+		}
+	}
+
 	if settings.Currency != nil {
 		w.currency = settings.Currency
 	}
@@ -59,66 +75,13 @@ func (w *Wallet) Configure(settings *wallet.Setting) {
 	}
 }
 
-func (w *Wallet) jsonRPC(ctx context.Context, resp interface{}, method string, params interface{}) error {
-	type Result struct {
-		Code    string           `json:"code,omitempty"`
-		Message string           `json:"message,omitempty"`
-		Error   *json.RawMessage `json:"Error,omitempty"`
-	}
-
-	uri, err := url.Parse(w.wallet.URI)
-	if err != nil {
-		return err
-	}
-
-	response, err := w.client.
-		R().
-		SetContext(ctx).
-		SetResult(Result{}).
-		SetHeaders(map[string]string{
-			"Accept":       "application/json",
-			"Content-Type": "application/json",
-		}).
-		SetBody(params).
-		Post(uri.JoinPath(method).String())
-
-	if err != nil {
-		return err
-	}
-
-	result := response.Result().(*Result)
-
-	if result.Code == "CONTRACT_VALIDATE_ERROR" {
-		decoded, err := hex.DecodeString(result.Message)
-		if err != nil {
-			return fmt.Errorf("jsonRPC error: %s, %s", result.Code, err.Error())
-		}
-		return fmt.Errorf("jsonRPC error: %s, %s", result.Code, string(decoded))
-	}
-
-	if result.Error != nil {
-		return errors.New("jsonRPC error: " + string(*result.Error))
-	}
-
-	if err := json.Unmarshal(response.Body(), resp); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (w *Wallet) CreateAddress(ctx context.Context) (address, secret string, err error) {
-	type Result struct {
-		Address    string `json:"address"`
-		PrivateKey string `json:"privateKey"`
-	}
-	var resp *Result
-	err = w.jsonRPC(ctx, &resp, "wallet/generateaddress", nil)
+	key, err := concerns.NewKey()
 	if err != nil {
-		return
+		return "", "", err
 	}
 
-	return resp.Address, resp.PrivateKey, err
+	return key.Address().String(), key.Hex(), err
 }
 
 func (w *Wallet) PrepareDepositCollection(ctx context.Context, tx *transaction.Transaction, depositSpreads []*transaction.Transaction, depositCurrency *currency.Currency) (*transaction.Transaction, error) {
@@ -146,11 +109,6 @@ func (w *Wallet) CreateTransaction(ctx context.Context, tx *transaction.Transact
 func (w *Wallet) createTrxTransaction(ctx context.Context, tx *transaction.Transaction, opt map[string]interface{}) (*transaction.Transaction, error) {
 	options := w.mergeOptions(defaultTrxFee, w.currency.Options, tx.Options, opt)
 
-	toAddress, err := concerns.Base58ToAddress(tx.ToAddress)
-	if err != nil {
-		return nil, err
-	}
-
 	amount := w.ConvertToBaseUnit(tx.Amount)
 	fee := options.FeeLimit
 
@@ -158,23 +116,42 @@ func (w *Wallet) createTrxTransaction(ctx context.Context, tx *transaction.Trans
 		amount = amount.Sub(fee)
 	}
 
-	var resp *struct {
-		Transaction struct {
-			TxID string `json:"txID"`
-		} `json:"transaction"`
+	ownerAddress, err := address.Base58ToAddress(w.wallet.Address)
+	if err != nil {
+		return nil, err
 	}
 
-	if err := w.jsonRPC(ctx, &resp, "wallet/easytransferbyprivate", map[string]interface{}{
-		"privateKey": w.wallet.Secret,
-		"toAddress":  toAddress.Hex(),
-		"amount":     amount.BigInt(),
-	}); err != nil {
+	toAddress, err := address.Base58ToAddress(tx.ToAddress)
+	if err != nil {
 		return nil, err
+	}
+
+	transactionData, err := w.walletClient.CreateTransaction(ctx, &core.TransferContract{
+		ToAddress:    toAddress.Bytes(),
+		OwnerAddress: ownerAddress.Bytes(),
+		Amount:       amount.BigInt().Int64(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	txid, signedTxn, err := w.signTransaction(ctx, transactionData, w.wallet.Secret)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := w.walletClient.BroadcastTransaction(ctx, signedTxn)
+	if err != nil {
+		return nil, err
+	}
+
+	if !resp.Result {
+		return nil, fmt.Errorf("failed to create trx transaction from %s to %s", w.wallet.Address, tx.ToAddress)
 	}
 
 	tx.Fee = decimal.NewNullDecimal(w.ConvertFromBaseUnit(fee))
 	tx.Status = transaction.StatusPending
-	tx.TxHash = null.StringFrom(resp.Transaction.TxID)
+	tx.TxHash = null.StringFrom(txid)
 
 	return tx, nil
 }
@@ -182,78 +159,53 @@ func (w *Wallet) createTrxTransaction(ctx context.Context, tx *transaction.Trans
 func (w *Wallet) createTrc20Transaction(ctx context.Context, tx *transaction.Transaction, opt map[string]interface{}) (*transaction.Transaction, error) {
 	options := w.mergeOptions(defaultTrc20Fee, w.currency.Options, tx.Options, opt)
 
-	signedTxn, err := w.signTransaction(ctx, tx, options)
+	amount := w.ConvertToBaseUnit(tx.Amount)
+
+	resp, err := w.client.TRC20Send(w.wallet.Address, tx.ToAddress, options.Trc20ContractAddress, amount.BigInt(), options.FeeLimit.BigInt().Int64())
 	if err != nil {
 		return nil, err
 	}
 
-	resp := new(struct {
-		Result bool `json:"result"`
-	})
-	if err := w.jsonRPC(ctx, &resp, "wallet/broadcasttransaction", signedTxn); err != nil || !resp.Result {
+	txid, signedTxn, err := w.signTransaction(ctx, resp.Transaction, w.wallet.Secret)
+	if err != nil {
+		return nil, err
+	}
+
+	respBroadcast, err := w.walletClient.BroadcastTransaction(ctx, signedTxn)
+	if err != nil {
+		return nil, err
+	}
+
+	if !respBroadcast.Result {
 		return nil, fmt.Errorf("failed to create trc20 transaction from %s to %s", w.wallet.Address, tx.ToAddress)
 	}
 
 	tx.Fee = decimal.NewNullDecimal(w.ConvertFromBaseUnit(options.FeeLimit))
 	tx.Status = transaction.StatusPending
-	tx.TxHash = null.StringFrom(signedTxn["txID"].(string))
+	tx.TxHash = null.StringFrom(txid)
 
 	return tx, nil
 }
 
-func (w *Wallet) signTransaction(ctx context.Context, tx *transaction.Transaction, options Options) (map[string]interface{}, error) {
-	txn, err := w.triggerSmartContract(ctx, tx, options)
+func (w *Wallet) signTransaction(ctx context.Context, txData *core.Transaction, privateKey string) (txid string, transaction *core.Transaction, err error) {
+	key, err := concerns.NewFromPrivateKey(privateKey)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
-	var resp map[string]interface{}
-	if err := w.jsonRPC(ctx, &resp, "wallet/gettransactionsign", map[string]interface{}{
-		"transaction": txn,
-		"privateKey":  w.wallet.Secret,
-	}); err != nil {
-		return nil, err
-	}
-
-	return resp, nil
-}
-
-func (w *Wallet) triggerSmartContract(ctx context.Context, tx *transaction.Transaction, options Options) (json.RawMessage, error) {
-	contractAddress, err := concerns.Base58ToAddress(options.Trc20ContractAddress)
+	rawData, err := proto.Marshal(txData.GetRawData())
 	if err != nil {
-		return nil, err
+		return "", nil, fmt.Errorf("proto marshal tx raw data error: %v", err)
 	}
 
-	ownerAddress, err := concerns.Base58ToAddress(w.wallet.Address)
+	txid, signature, err := key.Sign(rawData)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
-	toAddress, err := concerns.Base58ToAddress(tx.ToAddress)
-	if err != nil {
-		return nil, err
-	}
+	txData.Signature = append(txData.Signature, signature)
 
-	type respResult struct {
-		Transaction json.RawMessage `json:"transaction"`
-	}
-
-	amount := w.ConvertToBaseUnit(tx.Amount)
-	hexAmount := hexutil.EncodeBig(amount.BigInt())
-	parameter := xstrings.RightJustify(toAddress.Hex()[2:], 64, "0") + xstrings.RightJustify(strings.TrimLeft(hexAmount, "0x"), 64, "0")
-
-	var result *respResult
-	if err := w.jsonRPC(ctx, &result, "wallet/triggersmartcontract", map[string]interface{}{
-		"contract_address":  contractAddress.Hex(),
-		"function_selector": "transfer(address,uint256)",
-		"parameter":         parameter,
-		"fee_limit":         options.FeeLimit,
-		"owner_address":     ownerAddress.Hex(),
-	}); err != nil {
-		return nil, err
-	}
-
-	return result.Transaction, nil
+	return txid, txData, nil
 }
 
 func (w *Wallet) LoadBalance(ctx context.Context) (decimal.Decimal, error) {
@@ -265,53 +217,23 @@ func (w *Wallet) LoadBalance(ctx context.Context) (decimal.Decimal, error) {
 }
 
 func (w *Wallet) loadTrc20Balance(ctx context.Context) (decimal.Decimal, error) {
-	contractAddress, err := concerns.Base58ToAddress(w.currency.Options["trc20_contract_address"].(string))
+	big, err := w.client.TRC20ContractBalance(w.wallet.Address, w.currency.Options["trc20_contract_address"].(string))
 	if err != nil {
 		return decimal.Zero, err
 	}
 
-	ownerAddress, err := concerns.Base58ToAddress(w.wallet.Address)
-	if err != nil {
-		return decimal.Zero, err
-	}
-
-	var resp *struct {
-		ConstantResult []string `json:"constant_result"`
-	}
-
-	if err := w.jsonRPC(ctx, &resp, "wallet/triggersmartcontract", map[string]string{
-		"owner_address":     ownerAddress.Hex(),
-		"contract_address":  contractAddress.Hex(),
-		"function_selector": "balanceOf(address)",
-		"parameter":         xstrings.RightJustify(ownerAddress.Hex()[2:], 64, "0"),
-	}); err != nil {
-		return decimal.Zero, err
-	}
-
-	b := &big.Int{}
-	b.SetString(resp.ConstantResult[0], 16)
-
-	return decimal.NewFromBigInt(b, -w.currency.Subunits), nil
+	return decimal.NewFromBigInt(big, -w.currency.Subunits), nil
 }
 
 func (w *Wallet) loadTrxBalance(ctx context.Context) (decimal.Decimal, error) {
-	addressDecoded, err := concerns.Base58ToAddress(w.wallet.Address)
+	result, err := w.client.GetAccount(w.wallet.Address)
 	if err != nil {
 		return decimal.Zero, err
 	}
 
-	type Result struct {
-		Balance decimal.Decimal `json:"balance"`
-	}
+	amount := decimal.NewFromInt(result.Balance)
 
-	var result *Result
-	if err := w.jsonRPC(ctx, &result, "wallet/getaccount", map[string]interface{}{
-		"address": addressDecoded.Hex(),
-	}); err != nil {
-		return decimal.Zero, err
-	}
-
-	return w.ConvertFromBaseUnit(result.Balance), nil
+	return w.ConvertFromBaseUnit(amount), nil
 }
 
 func (w *Wallet) mergeOptions(first map[string]interface{}, steps ...map[string]interface{}) Options {
