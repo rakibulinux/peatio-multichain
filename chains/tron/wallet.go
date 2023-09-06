@@ -58,6 +58,10 @@ func NewWallet() wallet.Wallet {
 }
 
 func (w *Wallet) Configure(settings *wallet.Setting) {
+	if settings == nil {
+		return
+	}
+
 	if settings.Wallet != nil {
 		if len(settings.Wallet.URI) > 0 {
 			w.client = client.NewGrpcClientWithTimeout(settings.Wallet.URI, 5*time.Second)
@@ -135,7 +139,12 @@ func (w *Wallet) createTrxTransaction(ctx context.Context, tx *transaction.Trans
 		return nil, err
 	}
 
-	txid, signedTxn, err := w.signTransaction(ctx, transactionData, w.wallet.Secret)
+	signedTxn, err := w.signTransaction(ctx, transactionData, w.wallet.Secret)
+	if err != nil {
+		return nil, err
+	}
+
+	txid, err := concerns.TransactionToHex(signedTxn)
 	if err != nil {
 		return nil, err
 	}
@@ -149,6 +158,8 @@ func (w *Wallet) createTrxTransaction(ctx context.Context, tx *transaction.Trans
 		return nil, fmt.Errorf("failed to create trx transaction from %s to %s", w.wallet.Address, tx.ToAddress)
 	}
 
+	tx.Currency = w.currency.ID
+	tx.CurrencyFee = w.currency.ID
 	tx.Fee = decimal.NewNullDecimal(w.ConvertFromBaseUnit(fee))
 	tx.Status = transaction.StatusPending
 	tx.TxHash = null.StringFrom(txid)
@@ -166,7 +177,12 @@ func (w *Wallet) createTrc20Transaction(ctx context.Context, tx *transaction.Tra
 		return nil, err
 	}
 
-	txid, signedTxn, err := w.signTransaction(ctx, resp.Transaction, w.wallet.Secret)
+	signedTxn, err := w.signTransaction(ctx, resp.Transaction, w.wallet.Secret)
+	if err != nil {
+		return nil, err
+	}
+
+	txid, err := concerns.TransactionToHex(signedTxn)
 	if err != nil {
 		return nil, err
 	}
@@ -187,25 +203,25 @@ func (w *Wallet) createTrc20Transaction(ctx context.Context, tx *transaction.Tra
 	return tx, nil
 }
 
-func (w *Wallet) signTransaction(ctx context.Context, txData *core.Transaction, privateKey string) (txid string, transaction *core.Transaction, err error) {
+func (w *Wallet) signTransaction(ctx context.Context, txData *core.Transaction, privateKey string) (transaction *core.Transaction, err error) {
 	key, err := concerns.NewFromPrivateKey(privateKey)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 
 	rawData, err := proto.Marshal(txData.GetRawData())
 	if err != nil {
-		return "", nil, fmt.Errorf("proto marshal tx raw data error: %v", err)
+		return nil, fmt.Errorf("proto marshal tx raw data error: %v", err)
 	}
 
-	txid, signature, err := key.Sign(rawData)
+	signature, err := key.Sign(rawData)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 
 	txData.Signature = append(txData.Signature, signature)
 
-	return txid, txData, nil
+	return txData, nil
 }
 
 func (w *Wallet) LoadBalance(ctx context.Context) (decimal.Decimal, error) {
@@ -216,24 +232,24 @@ func (w *Wallet) LoadBalance(ctx context.Context) (decimal.Decimal, error) {
 	}
 }
 
-func (w *Wallet) loadTrc20Balance(ctx context.Context) (decimal.Decimal, error) {
-	big, err := w.client.TRC20ContractBalance(w.wallet.Address, w.currency.Options["trc20_contract_address"].(string))
-	if err != nil {
-		return decimal.Zero, err
-	}
-
-	return decimal.NewFromBigInt(big, -w.currency.Subunits), nil
-}
-
 func (w *Wallet) loadTrxBalance(ctx context.Context) (decimal.Decimal, error) {
 	result, err := w.client.GetAccount(w.wallet.Address)
 	if err != nil {
-		return decimal.Zero, err
+		return decimal.Zero, nil
 	}
 
 	amount := decimal.NewFromInt(result.Balance)
 
 	return w.ConvertFromBaseUnit(amount), nil
+}
+
+func (w *Wallet) loadTrc20Balance(ctx context.Context) (decimal.Decimal, error) {
+	big, err := w.client.TRC20ContractBalance(w.wallet.Address, w.currency.Options["trc20_contract_address"].(string))
+	if err != nil {
+		return decimal.Zero, nil
+	}
+
+	return decimal.NewFromBigInt(big, -w.currency.Subunits), nil
 }
 
 func (w *Wallet) mergeOptions(first map[string]interface{}, steps ...map[string]interface{}) Options {

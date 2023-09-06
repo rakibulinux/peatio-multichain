@@ -178,11 +178,13 @@ func (b *Blockchain) GetBalanceOfAddress(ctx context.Context, address string, cu
 	return decimal.Zero, errors.New("unavailable address balance")
 }
 
-func (b *Blockchain) GetTransaction(ctx context.Context, transaction_hash string) (tx *transaction.Transaction, err error) {
+func (b *Blockchain) GetTransaction(ctx context.Context, transaction_hash string) ([]*transaction.Transaction, error) {
 	var resp *TxHash
 	if err := b.jsonRPC(ctx, &resp, "getrawtransaction", transaction_hash, 1); err != nil {
 		return nil, err
 	}
+
+	transactions := make([]*transaction.Transaction, 0)
 
 	for _, v := range b.buildVOut(resp.VOut) {
 		fee, err := b.calculateFee(ctx, resp)
@@ -190,7 +192,7 @@ func (b *Blockchain) GetTransaction(ctx context.Context, transaction_hash string
 			return nil, err
 		}
 
-		tx = &transaction.Transaction{
+		transactions = append(transactions, &transaction.Transaction{
 			TxHash:      null.StringFrom(resp.TxID),
 			ToAddress:   v.ScriptPubKey.Addresses[0],
 			Currency:    b.currency.ID,
@@ -198,10 +200,10 @@ func (b *Blockchain) GetTransaction(ctx context.Context, transaction_hash string
 			Fee:         decimal.NewNullDecimal(fee),
 			Amount:      v.Value,
 			Status:      transaction.StatusSucceed,
-		}
+		})
 	}
 
-	return
+	return transactions, nil
 }
 
 func (b *Blockchain) calculateFee(ctx context.Context, tx *TxHash) (decimal.Decimal, error) {

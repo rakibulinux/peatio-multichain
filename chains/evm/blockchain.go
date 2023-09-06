@@ -97,7 +97,7 @@ func (b *Blockchain) GetBlockByHash(ctx context.Context, hash string) (*block.Bl
 	}, nil
 }
 
-func (b *Blockchain) GetTransaction(ctx context.Context, txHash string) (*transaction.Transaction, error) {
+func (b *Blockchain) GetTransaction(ctx context.Context, txHash string) ([]*transaction.Transaction, error) {
 	result, _, err := b.client.TransactionByHash(ctx, common.HexToHash(txHash))
 	if err != nil {
 		return nil, err
@@ -108,7 +108,7 @@ func (b *Blockchain) GetTransaction(ctx context.Context, txHash string) (*transa
 		return nil, err
 	}
 
-	return ts[0], nil
+	return ts, nil
 }
 
 func (b *Blockchain) GetBalanceOfAddress(ctx context.Context, address string, currencyID string) (decimal.Decimal, error) {

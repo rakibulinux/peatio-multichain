@@ -69,14 +69,14 @@ func (k *Key) Address() address.Address {
 	return address.PubkeyToAddress(*k.publicKey)
 }
 
-func (k *Key) Sign(rawData []byte) (txid string, signature []byte, err error) {
+func (k *Key) Sign(rawData []byte) (signature []byte, err error) {
 	h256h := sha256.New()
 	h256h.Write(rawData)
 	hash := h256h.Sum(nil)
 	signature, err = crypto.Sign(hash, k.privateKey)
 	if err != nil {
-		return "", nil, fmt.Errorf("sign error: %v", err)
+		return nil, fmt.Errorf("sign error: %v", err)
 	}
 
-	return fmt.Sprintf("%x\n", hash), signature, nil
+	return signature, nil
 }

@@ -11,7 +11,7 @@ import (
 func newBlockchain() blockchain.Blockchain {
 	bl := NewBlockchain()
 	bl.Configure(&blockchain.Setting{
-		URI: "http://demo.zsmartex.com:8090",
+		URI: "grpc.nile.trongrid.io:50051",
 		Currencies: []*currency.Currency{
 			{
 				ID:       "TRX",
@@ -21,7 +21,7 @@ func newBlockchain() blockchain.Blockchain {
 				ID:       "USDT",
 				Subunits: 6,
 				Options: map[string]interface{}{
-					"trc20_contract_address": "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj",
+					"trc20_contract_address": "TN2czYfN4bMgFXuBJbQ9GiEvJh1zR7JqQ2",
 				},
 			},
 		},
@@ -66,23 +66,23 @@ func TestBlockchain_GetBlockByHash(t *testing.T) {
 func TestBlockchain_GetTrxTransaction(t *testing.T) {
 	bl := newBlockchain()
 
-	tx, err := bl.GetTransaction(context.Background(), "2dc31df33223d3b19febc456d82e68de53fb2ea0ca767426b4ae62dbf2ceb9e8")
+	tx, err := bl.GetTransaction(context.Background(), "3db21060df6b4baa97b50cd5665d659f7fe5c4f6b0473c67df783d8835846f84")
 	if err != nil {
 		t.Error(err)
 	}
 
-	t.Log(tx)
+	t.Error(tx)
 }
 
 func TestBlockchain_GetTrc20Transaction(t *testing.T) {
 	bl := newBlockchain()
 
-	tx, err := bl.GetTransaction(context.Background(), "b7d8edcfaa0b665b39e7281e41ea6188b2635822c7fcb22f8dbbcb24dc674484")
+	tx, err := bl.GetTransaction(context.Background(), "a9d2d659a14c402087b208fa3f7063206b441f186f86b14dd2d1d9d90313113e")
 	if err != nil {
 		t.Error(err)
 	}
 
-	t.Log(tx)
+	t.Error(tx)
 }
 
 func TestBlockchain_GetBalanceOfAddress(t *testing.T) {
