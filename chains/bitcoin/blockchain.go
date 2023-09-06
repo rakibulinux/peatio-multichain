@@ -19,7 +19,7 @@ import (
 
 type VOut struct {
 	Value        decimal.Decimal `json:"value"`
-	N            int64           `json:"n"`
+	N            uint            `json:"n"`
 	ScriptPubKey *struct {
 		Addresses []string `json:"addresses"`
 	} `json:"scriptPubKey"`
@@ -27,7 +27,7 @@ type VOut struct {
 
 type Vin struct {
 	TxID string `json:"txid"`
-	VOut int64  `json:"vout"`
+	VOut uint   `json:"vout"`
 }
 
 type TxHash struct {
@@ -197,6 +197,7 @@ func (b *Blockchain) GetTransaction(ctx context.Context, transaction_hash string
 			ToAddress:   v.ScriptPubKey.Addresses[0],
 			Currency:    b.currency.ID,
 			CurrencyFee: b.currency.ID,
+			TxOut:       v.N,
 			Fee:         decimal.NewNullDecimal(fee),
 			Amount:      v.Value,
 			Status:      transaction.StatusSucceed,

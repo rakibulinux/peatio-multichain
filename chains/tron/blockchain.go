@@ -242,7 +242,7 @@ func (b *Blockchain) buildTrc20Transaction(tx *core.Transaction, txnReceipt *cor
 			return nil, err
 		}
 
-		for _, log := range txnReceipt.Log {
+		for i, log := range txnReceipt.Log {
 			if len(log.Topics) == 0 || common.Bytes2Hex(log.Topics[0]) != "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" {
 				continue
 			}
@@ -272,6 +272,7 @@ func (b *Blockchain) buildTrc20Transaction(tx *core.Transaction, txnReceipt *cor
 				TxHash:      null.StringFrom(common.Bytes2Hex(txnReceipt.GetId())),
 				ToAddress:   toAddress.String(),
 				FromAddress: fromAddress.String(),
+				TxOut:       uint(i),
 				Amount:      amount,
 				Fee:         decimal.NewNullDecimal(decimal.NewFromFloat(10)),
 				Status:      b.trc20TxnStatus(txnReceipt),

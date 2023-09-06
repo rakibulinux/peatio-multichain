@@ -30,6 +30,7 @@ type Transaction struct {
 	Amount      decimal.Decimal        `json:"amount,omitempty"`
 	BlockNumber int64                  `json:"block_number,omitempty"`
 	TxHash      null.String            `json:"tx_hash,omitempty"`
+	TxOut       uint                   `json:"tx_out,omitempty"`
 	Status      Status                 `json:"status,omitempty"`
 	Options     map[string]interface{} `json:"options,omitempty"`
 }

@@ -243,6 +243,7 @@ func (b *Blockchain) buildERC20Transactions(tx *types.Transaction, receipt *type
 					TxHash:      null.StringFrom(tx.Hash().Hex()),
 					FromAddress: fromAddress,
 					ToAddress:   toAddress,
+					TxOut:       l.Index,
 					Fee:         decimal.NewNullDecimal(fee),
 					Amount:      amount,
 					Status:      b.transactionStatus(receipt),
