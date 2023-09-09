@@ -62,7 +62,7 @@ func NewFromPrivateKey(privKey string) (*Key, error) {
 }
 
 func (k *Key) Hex() string {
-	return hexutil.Encode(crypto.FromECDSA(k.privateKey))
+	return hexutil.Encode(crypto.FromECDSA(k.privateKey))[2:]
 }
 
 func (k *Key) Address() address.Address {
