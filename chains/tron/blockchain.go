@@ -1,8 +1,8 @@
 package tron
 
 import (
-	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -124,27 +124,7 @@ func (b *Blockchain) buildBlock(ctx context.Context, blk *core.Block) (*block.Bl
 }
 
 func (b *Blockchain) buildTransaction(ctx context.Context, tx *core.Transaction) ([]*transaction.Transaction, error) {
-	var err error
-	if len(tx.RawData.Contract) == 0 {
-		if b.invalidTxn(tx) {
-			return nil, errors.New("transaction contract not found")
-		}
-	}
-
-	if tx.RawData.Contract[0].Type == core.Transaction_Contract_TransferContract || tx.RawData.Contract[0].Type == core.Transaction_Contract_TransferAssetContract {
-		if b.invalidTxn(tx) {
-			return nil, errors.New("transaction invalid txn")
-		}
-
-		if tx.RawData.Contract[0].Type == core.Transaction_Contract_TransferContract {
-			txs, err := b.buildTrxTransaction(tx)
-			if err != nil {
-				return nil, err
-			}
-
-			return txs, nil
-		}
-	}
+	transactions := make([]*transaction.Transaction, 0)
 
 	txID, err := concerns.TransactionToHex(tx)
 	if err != nil {
@@ -163,29 +143,37 @@ func (b *Blockchain) buildTransaction(ctx context.Context, tx *core.Transaction)
 		return nil, err
 	}
 
-	if !bytes.Equal(transactionID.Value, txInfo.Id) {
-		return nil, fmt.Errorf("transaction info not found")
+	for _, contractTx := range tx.RawData.Contract {
+		if contractTx.Type == core.Transaction_Contract_TriggerSmartContract {
+			if b.invalidTrc20Txn(txInfo) {
+				continue
+			}
+
+			tx, err := b.buildTrc20Transaction(contractTx, txInfo)
+			if err != nil {
+				return nil, err
+			}
+
+			if tx != nil {
+				transactions = append(transactions, tx)
+			}
+		} else if contractTx.Type == core.Transaction_Contract_TransferContract {
+			tx, err := b.buildTrxTransaction(contractTx, txInfo)
+			if err != nil {
+				return nil, err
+			}
+
+			if tx != nil {
+				transactions = append(transactions, tx)
+			}
+		}
 	}
 
-	if b.invalidTrc20Txn(txInfo) {
-		return nil, errors.New("transaction invalid trc20 txn")
+	for _, transaction := range transactions {
+		transaction.Fee = decimal.NewNullDecimal(decimal.NewFromBigInt(big.NewInt(tx.RawData.FeeLimit), -6))
 	}
 
-	if len(txInfo.ContractAddress) == 0 {
-		return []*transaction.Transaction{}, nil
-	}
-
-	return b.buildTrc20Transaction(tx, txInfo)
-}
-
-func (b *Blockchain) invalidTxn(tx *core.Transaction) bool {
-	txContract := tx.GetRawData().Contract[0]
-	var transferContract core.TransferContract
-	if err := anypb.UnmarshalTo(txContract.GetParameter(), &transferContract, proto.UnmarshalOptions{}); err != nil {
-		return true
-	}
-
-	return transferContract.Amount == 0 || tx.Ret[0].ContractRet == core.Transaction_Result_REVERT
+	return transactions, nil
 }
 
 func (b *Blockchain) invalidTrc20Txn(txn *core.TransactionInfo) bool {
@@ -196,102 +184,91 @@ func (b *Blockchain) invalidTrc20Txn(txn *core.TransactionInfo) bool {
 	return len(txn.ContractAddress) == 0 || len(txn.Log) == 0
 }
 
-func (b *Blockchain) buildTrxTransaction(tx *core.Transaction) ([]*transaction.Transaction, error) {
-	transactions := make([]*transaction.Transaction, 0)
-
-	for _, txContract := range tx.GetRawData().Contract {
-		var transferContract core.TransferContract
-		if err := anypb.UnmarshalTo(txContract.GetParameter(), &transferContract, proto.UnmarshalOptions{}); err != nil {
-			return nil, err
-		}
-
-		fromAddress := address.Address(transferContract.OwnerAddress)
-		toAddress := address.Address(transferContract.ToAddress)
-
-		txHash, err := concerns.TransactionToHex(tx)
-		if err != nil {
-			return nil, err
-		}
-
-		transactions = append(transactions, &transaction.Transaction{
-			Currency:    b.currency.ID,
-			CurrencyFee: b.currency.ID,
-			TxHash:      null.StringFrom(txHash),
-			ToAddress:   toAddress.String(),
-			FromAddress: fromAddress.String(),
-			Amount:      decimal.NewFromBigInt(big.NewInt(transferContract.Amount), -b.currency.Subunits),
-			Fee:         decimal.NewNullDecimal(decimal.NewFromFloat(1)),
-			Status:      transaction.StatusSucceed,
-		})
+func (b *Blockchain) buildTrxTransaction(contractTx *core.Transaction_Contract, txInfo *core.TransactionInfo) (*transaction.Transaction, error) {
+	fmt.Println(b.transactionStatus(txInfo))
+	if b.transactionStatus(txInfo) == transaction.StatusFailed {
+		return b.buildInvalidTrc20Txn(txInfo)
 	}
 
-	return transactions, nil
+	var transferContract core.TransferContract
+	if err := anypb.UnmarshalTo(contractTx.GetParameter(), &transferContract, proto.UnmarshalOptions{}); err != nil {
+		return nil, err
+	}
+
+	fromAddress := address.Address(transferContract.OwnerAddress)
+	toAddress := address.Address(transferContract.ToAddress)
+
+	return &transaction.Transaction{
+		Currency:    b.currency.ID,
+		CurrencyFee: b.currency.ID,
+		TxHash:      null.StringFrom(common.Bytes2Hex(txInfo.GetId())),
+		ToAddress:   toAddress.String(),
+		FromAddress: fromAddress.String(),
+		Amount:      decimal.NewFromBigInt(big.NewInt(transferContract.Amount), -b.currency.Subunits),
+		Status:      b.transactionStatus(txInfo),
+	}, nil
 }
 
-func (b *Blockchain) buildTrc20Transaction(tx *core.Transaction, txnReceipt *core.TransactionInfo) ([]*transaction.Transaction, error) {
-	transactions := make([]*transaction.Transaction, 0)
+const Trc20TransferMethodSignature = "a9059cbb"
 
-	if b.trc20TxnStatus(txnReceipt) == transaction.StatusFailed && len(txnReceipt.Log) == 0 {
-		return b.buildInvalidTrc20Txn(txnReceipt)
+func (b *Blockchain) buildTrc20Transaction(txContract *core.Transaction_Contract, txInfo *core.TransactionInfo) (*transaction.Transaction, error) {
+	if b.transactionStatus(txInfo) == transaction.StatusFailed {
+		return b.buildInvalidTrc20Txn(txInfo)
 	}
 
-	for _, txTriggerSmartContract := range tx.GetRawData().Contract {
-		var transferTriggerSmartContract core.TriggerSmartContract
-		err := proto.Unmarshal(txTriggerSmartContract.Parameter.GetValue(), &transferTriggerSmartContract)
-		if err != nil {
-			return nil, err
-		}
+	var transferTriggerSmartContract core.TriggerSmartContract
+	err := proto.Unmarshal(txContract.Parameter.GetValue(), &transferTriggerSmartContract)
+	if err != nil {
+		return nil, err
+	}
 
-		for i, log := range txnReceipt.Log {
-			if len(log.Topics) == 0 || common.Bytes2Hex(log.Topics[0]) != "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" {
-				continue
-			}
+	dataHex := hex.EncodeToString(transferTriggerSmartContract.GetData())
 
-			var c *currency.Currency
-			for _, contract := range b.contracts {
-				contractAddress := address.Address(transferTriggerSmartContract.ContractAddress)
-				if strings.EqualFold(contract.Options["trc20_contract_address"].(string), contractAddress.String()) {
-					c = contract
-					break
-				}
-			}
+	if len(dataHex) != 136 && !strings.HasPrefix(dataHex, Trc20TransferMethodSignature) {
+		return b.buildInvalidTrc20Txn(txInfo)
+	}
 
-			if c == nil {
-				continue
-			}
+	contractAddress := address.Address(transferTriggerSmartContract.ContractAddress)
 
-			bigAmount := new(big.Int).SetBytes(log.Data)
-
-			fromAddress := address.HexToAddress(fmt.Sprintf("41%s", common.Bytes2Hex(log.Topics[1])[24:]))
-			toAddress := address.HexToAddress(fmt.Sprintf("41%s", common.Bytes2Hex(log.Topics[2])[24:]))
-			amount := decimal.NewFromBigInt(bigAmount, -c.Subunits)
-
-			transactions = append(transactions, &transaction.Transaction{
-				Currency:    c.ID,
-				CurrencyFee: b.currency.ID,
-				TxHash:      null.StringFrom(common.Bytes2Hex(txnReceipt.GetId())),
-				ToAddress:   toAddress.String(),
-				FromAddress: fromAddress.String(),
-				TxOut:       uint(i),
-				Amount:      amount,
-				Fee:         decimal.NewNullDecimal(decimal.NewFromFloat(10)),
-				Status:      b.trc20TxnStatus(txnReceipt),
-			})
+	var c *currency.Currency
+	for _, contract := range b.contracts {
+		if strings.EqualFold(contract.Options["trc20_contract_address"].(string), contractAddress.String()) {
+			c = contract
+			break
 		}
 	}
 
-	return transactions, nil
+	if c == nil {
+		return b.buildInvalidTrc20Txn(txInfo)
+	}
+
+	fromAddress := address.Address(transferTriggerSmartContract.OwnerAddress)
+	toAddress := address.HexToAddress(dataHex[len(Trc20TransferMethodSignature) : 64+len(Trc20TransferMethodSignature)])
+
+	valueStr := dataHex[64+len(Trc20TransferMethodSignature):]
+	value := new(big.Int)
+	value.SetString(valueStr, 16)
+
+	return &transaction.Transaction{
+		Currency:    c.ID,
+		CurrencyFee: b.currency.ID,
+		TxHash:      null.StringFrom(common.Bytes2Hex(txInfo.GetId())),
+		ToAddress:   toAddress.String(),
+		FromAddress: fromAddress.String(),
+		Amount:      decimal.NewFromBigInt(value, -c.Subunits),
+		Status:      b.transactionStatus(txInfo),
+	}, nil
 }
 
-func (b *Blockchain) trc20TxnStatus(txnReceipt *core.TransactionInfo) transaction.Status {
-	if txnReceipt.Receipt.Result == core.Transaction_Result_SUCCESS {
+func (b *Blockchain) transactionStatus(txnReceipt *core.TransactionInfo) transaction.Status {
+	if txnReceipt.Receipt.Result == core.Transaction_Result_SUCCESS || txnReceipt.Receipt.Result == core.Transaction_Result_DEFAULT {
 		return transaction.StatusSucceed
 	} else {
 		return transaction.StatusFailed
 	}
 }
 
-func (b *Blockchain) buildInvalidTrc20Txn(txnReceipt *core.TransactionInfo) ([]*transaction.Transaction, error) {
+func (b *Blockchain) buildInvalidTrc20Txn(txnReceipt *core.TransactionInfo) (*transaction.Transaction, error) {
 	var c *currency.Currency
 	for _, contract := range b.contracts {
 		contractAddress := address.Address(txnReceipt.ContractAddress)
@@ -306,13 +283,11 @@ func (b *Blockchain) buildInvalidTrc20Txn(txnReceipt *core.TransactionInfo) ([]*
 		return nil, nil
 	}
 
-	return []*transaction.Transaction{
-		{
-			Currency:    c.ID,
-			CurrencyFee: b.currency.ID,
-			TxHash:      null.StringFrom(common.Bytes2Hex(txnReceipt.GetId())),
-			Status:      b.trc20TxnStatus(txnReceipt),
-		},
+	return &transaction.Transaction{
+		Currency:    c.ID,
+		CurrencyFee: b.currency.ID,
+		TxHash:      null.StringFrom(common.Bytes2Hex(txnReceipt.GetId())),
+		Status:      b.transactionStatus(txnReceipt),
 	}, nil
 }
 

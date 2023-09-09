@@ -21,7 +21,7 @@ func newBlockchain() blockchain.Blockchain {
 				ID:       "USDT",
 				Subunits: 6,
 				Options: map[string]interface{}{
-					"trc20_contract_address": "TN2czYfN4bMgFXuBJbQ9GiEvJh1zR7JqQ2",
+					"trc20_contract_address": "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
 				},
 			},
 		},
@@ -44,7 +44,7 @@ func TestBlockchain_GetLatestBlockNumber(t *testing.T) {
 func TestBlockchain_GetBlockByNumber(t *testing.T) {
 	bl := newBlockchain()
 
-	block, err := bl.GetBlockByNumber(context.Background(), 30196474)
+	block, err := bl.GetBlockByNumber(context.Background(), 39870460)
 	if err != nil {
 		t.Error(err)
 	}
@@ -66,7 +66,7 @@ func TestBlockchain_GetBlockByHash(t *testing.T) {
 func TestBlockchain_GetTrxTransaction(t *testing.T) {
 	bl := newBlockchain()
 
-	tx, err := bl.GetTransaction(context.Background(), "3db21060df6b4baa97b50cd5665d659f7fe5c4f6b0473c67df783d8835846f84")
+	tx, err := bl.GetTransaction(context.Background(), "e602558b952347dd9c9ec6f6e27a45feef97733a37820b6de074714d15e225e9")
 	if err != nil {
 		t.Error(err)
 	}
@@ -82,7 +82,7 @@ func TestBlockchain_GetTrc20Transaction(t *testing.T) {
 		t.Error(err)
 	}
 
-	t.Error(tx)
+	t.Error(tx[0])
 }
 
 func TestBlockchain_GetBalanceOfAddress(t *testing.T) {
