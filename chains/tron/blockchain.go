@@ -185,7 +185,6 @@ func (b *Blockchain) invalidTrc20Txn(txn *core.TransactionInfo) bool {
 }
 
 func (b *Blockchain) buildTrxTransaction(contractTx *core.Transaction_Contract, txInfo *core.TransactionInfo) (*transaction.Transaction, error) {
-	fmt.Println(b.transactionStatus(txInfo))
 	if b.transactionStatus(txInfo) == transaction.StatusFailed {
 		return b.buildInvalidTrc20Txn(txInfo)
 	}
