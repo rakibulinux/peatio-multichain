@@ -71,7 +71,7 @@ func TestBlockchain_GetTrxTransaction(t *testing.T) {
 		t.Error(err)
 	}
 
-	t.Error(tx)
+	t.Error(tx[0])
 }
 
 func TestBlockchain_GetTrc20Transaction(t *testing.T) {

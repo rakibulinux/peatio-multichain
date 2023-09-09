@@ -242,7 +242,7 @@ func (b *Blockchain) buildTrc20Transaction(txContract *core.Transaction_Contract
 	}
 
 	fromAddress := address.Address(transferTriggerSmartContract.OwnerAddress)
-	toAddress := address.HexToAddress(dataHex[len(Trc20TransferMethodSignature) : 64+len(Trc20TransferMethodSignature)])
+	toAddress := address.HexToAddress("41" + dataHex[32:32+40])
 
 	valueStr := dataHex[64+len(Trc20TransferMethodSignature):]
 	value := new(big.Int)
